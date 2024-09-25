@@ -1,2 +1,9 @@
 token.json
 client_secret.json
+url.json
+temp.py
+build/
+dist/
+YTLivetool.spec
+temp.json
+app.log

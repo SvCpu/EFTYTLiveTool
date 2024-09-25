@@ -1,14 +1,25 @@
-# pip install google-auth-oauthlib google-auth-httplib2
-
+# pip install google-auth-oauthlib google-auth-httplib2 pytz
+import logging
+import json
 import os
 import google.auth.transport.requests
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import requests
-
+import pytz
 SCOPES = ['https://www.googleapis.com/auth/youtube.force-ssl']
+
+
+# eventType 直播事件類型:completed：已完成的直播事件。live：正在進行的直播事件。upcoming：即將開始的直播事件。
+# order 指定搜索結果的排序:
+    # date：按發布日期排序，最新的影片排在最前面。
+    # rating：按評分排序，評分最高的影片排在最前面。
+    # relevance：按相關性排序，與搜索查詢最相關的影片排在最前面。
+    # title：按標題的字母順序排序。
+    # videoCount：按頻道中的影片數量排序，影片數量最多的頻道排在最前面。
+    # viewCount：按觀看次數排序，觀看次數最多的影片排在最前面
 
 # 如果修改範圍，刪除 token.json 文件
 def get_authenticated_service():
@@ -37,7 +48,6 @@ def get_channel_id():
         mine=True
     )
     response = request.execute()
-    
     if 'items' in response and len(response['items']) > 0:
         return response['items'][0]['id']
     else:
@@ -52,13 +62,45 @@ def get_live_stream(channel_id):
         type='video'
     )
     response = request.execute()
-    
+
     if 'items' in response and len(response['items']) > 0:
-        live_video = response['items'][0]
-        live_link = f"https://www.youtube.com/watch?v={live_video['id']['videoId']}"
-        return live_link
+        snippet = response['items'][0]['snippet']
+        out = {'title': snippet['title'],
+            'videoId': response['items'][0]["id"]['videoId'],
+            'description': snippet['description'],
+            'liveBroadcastContent': snippet['liveBroadcastContent'],
+            'publishTime': snippet["publishTime"],
+            }
+        return out
     else:
         return None
+# 获取频道直播影片列表前10部的直播影片(非排名)
+def get_top_live_videos():
+    request = youtube.search().list(
+        part='snippet',
+        channelId=channel_id,
+        eventType='completed',
+        type='video',
+        maxResults=10,
+        order='date'
+    )
+    response = request.execute()
+    items = response.get("items", [])
+    outlist = []
+    for video in items:
+        snippet = video['snippet']
+        out = {'title': snippet['title'],
+            'videoId': video["id"]['videoId'],
+            'description': snippet['description'],
+            'liveBroadcastContent': snippet['liveBroadcastContent'],
+            'publishTime': snippet["publishTime"],
+            }
+        print(out)
+        outlist.append(out)
+    return outlist
+
+def id_to_link(id):
+    return f"https://www.youtube.com/watch?v={id}"
 
 # 獲取直播描述
 def get_live_description(video_id):
@@ -67,27 +109,47 @@ def get_live_description(video_id):
         id=video_id
     )
     response = request.execute()
-    
+
     if 'items' in response and len(response['items']) > 0:
         description = response['items'][0]['snippet']['description']
         return description
     else:
         return None
 
-# 獲取直播經過的時間
-def get_live_stream_duration(video_id):
+# 獲取直播開始的時間
+def get_live_stream_start_time(video_id):
     request = youtube.videos().list(
         part='liveStreamingDetails',
         id=video_id
     )
     response = request.execute()
-    
+
     if 'items' in response and len(response['items']) > 0:
         live_details = response['items'][0]['liveStreamingDetails']
         start_time = live_details['actualStartTime']
         return start_time
     else:
         return None
+
+
+def get_live_stream_time(start_time):
+    now = datetime.now(timezone.utc)
+    duration = now - start_time
+    return duration
+
+
+def convert_timezone(utc_time_str):
+    # 解析 UTC 時間字串
+    utc_time = datetime.strptime(utc_time_str, "%Y-%m-%dT%H:%M:%SZ")
+
+    # 設定時區
+    macau_tz = pytz.timezone("Asia/Macau")
+
+    # 將 UTC 時間轉換為澳門時間
+    macau_time = utc_time.replace(tzinfo=pytz.utc).astimezone(macau_tz)
+
+    return macau_time
+
 
 # 修改直播描述
 def update_live_description(video_id, new_description):
@@ -129,10 +191,11 @@ def create_broadcast(title, description, start_time, end_time):
     return response
 
 # 更新直播活動
-    broadcast_id = broadcast['id']
+    broadcast_id = ""
     new_title = "Updated Live Broadcast Title"
     new_description = "This is an updated description."
-    updated_broadcast = update_broadcast(broadcast_id, new_title, new_description)
+    updated_broadcast = update_broadcast(
+        broadcast_id, new_title, new_description)
     print("Broadcast updated:", updated_broadcast)
 def update_broadcast(broadcast_id, new_title, new_description):
     request = youtube.liveBroadcasts().update(
@@ -146,6 +209,7 @@ def update_broadcast(broadcast_id, new_title, new_description):
         }
     )
     response = request.execute()
+    logger.info('request Broadcast '+ broadcast_id + ' chage of '+new_title+ ' '+new_description)
     return response
 
 # 刪除直播活動
@@ -155,14 +219,20 @@ def delete_broadcast(broadcast_id):
     request = youtube.liveBroadcasts().delete(
         id=broadcast_id
     )
-    response = request.execute()
-    return response
+    try:
+        request.execute()
+    except Exception as e:
+        logger.error('Broadcast '+ broadcast_id + ' del request error with:'+str(e))
+    else:
+        logger.info('Broadcast '+ broadcast_id + ' del request sended')
 
 # 獲取直播聊天信息
 # live_chat_id = "YOUR_LIVE_CHAT_ID"
 # chat_messages = get_live_chat_messages(live_chat_id)
 # for message in chat_messages['items']:
 #     print(f"{message['authorDetails']['displayName']}: {message['snippet']['displayMessage']}")
+
+
 def get_live_chat_messages(live_chat_id):
     request = youtube.liveChatMessages().list(
         liveChatId=live_chat_id,
@@ -178,7 +248,7 @@ def get_live_chat_id(video_id):
         id=video_id
     )
     response = request.execute()
-    
+
     if 'items' in response and len(response['items']) > 0:
         live_details = response['items'][0]['liveStreamingDetails']
         live_chat_id = live_details.get('activeLiveChatId')
@@ -204,23 +274,184 @@ def get_live_stream_details(video_id):
         id=video_id
     )
     response = request.execute()
-    
+
     if 'items' in response and len(response['items']) > 0:
         live_details = response['items'][0]['liveStreamingDetails']
+        print(response)
         return live_details
     else:
         return None
 
+def is_video_live(video_id):
+    request = youtube.videos().list(
+        part='snippet,liveStreamingDetails',
+        id=video_id
+    )
+    response = request.execute()
+    if 'items' in response and len(response['items']) > 0:
+        live_broadcast_content = response['items'][0]['snippet']['liveBroadcastContent']
+        return live_broadcast_content
+    else:
+        return False
+
+# def get_latest_video_id(playlist_id):
+#     request = youtube.playlistItems().list(
+#         part='snippet',
+#         playlistId=playlist_id,
+#         maxResults=1
+#     )
+#     response = request.execute()
+#     if 'items' in response and len(response['items']) > 0:
+#         return response['items'][0]['snippet']['resourceId']['videoId']
+#     else:
+#         return None
+
+# 獲取指定播放列表中最後新增的視頻
+def get_latest_video_title(playlist_id):
+    request = youtube.playlistItems().list(
+        part='snippet',
+        playlistId=playlist_id,
+        maxResults=3
+    )
+    response = request.execute()
+    if 'items' in response and len(response['items']) > 0:
+        print(response)
+        latest_video = max(response['items'], key=lambda x: x['snippet']['publishedAt'])
+        out = {
+            "title": latest_video['snippet']['title'],
+            "videoid": latest_video['snippet']['resourceId']['videoId'],
+            "description": latest_video['snippet']['description'],
+            "publishedAt": latest_video['snippet']['publishedAt']
+        }
+        return out
+    else:
+        return None
+
+def sort_videos(video_list):
+    # 解析日期字串並排序
+    parsed_videos = [(video, parse_date_string(video[10:])) for video in video_list]
+    sorted_videos = sorted(parsed_videos, key=lambda x: (x[1]['year'], x[1]['month'], x[1]['day'], x[1]['serial']), reverse=True)
+    return [video[0] for video in sorted_videos]
+
+# 字符串操作和日期解析
+# date_string = "20240925-1"
+# result = parse_date_string(date_string)
+# print(result)  # 輸出: [2024, 9, 25, 1]
+def parse_date_string(date_string):
+    # 分割日期和序號
+    date_part, serial_part = date_string.split('-')
+    out = {
+        "year": int(date_part[:4]),
+        "month": int(date_part[4:6]),
+        "day": int(date_part[6:8]),
+        "serial": int(serial_part)
+    }
+    return out
+
+
+def command1():
+    if liveing:
+        renamedatestr = ''
+        top_live = get_top_live_videos()
+        titlelist = []
+        for video in top_live:
+            titlelist.append(video['title'])
+        titlelist = sort_videos(titlelist)
+        now = datetime.now()
+        lastlive = parse_date_string(titlelist[0][10:])
+        nowtimestr = str(now.year+now.strftime("%m")+now.strftime("%d"))
+        if (lastlive["year"]+lastlive['month']+lastlive['day']) == nowtimestr:
+            renamedatestr = nowtimestr+'-'+str(lastlive["serial"]+1)
+        else:
+            renamedatestr = nowtimestr+"-1"
+        if liveing['title'][10:] == renamedatestr:
+            print('名稱正確,無需修改')
+            return 0
+        updated_broadcast = update_broadcast(liveing['videoId'], '《逃离塔科夫PVE》'+renamedatestr, liveing['description'])
+        print("Broadcast updated:", updated_broadcast)
+    else:
+        print("當前沒有進行中的直播")
+
+def command2():
+    if liveing:
+        addstr='\n'
+        if input("是否加上時間戳(輸入任意字符代表確定)"):
+            addstr =+ get_live_stream_time(live_time)
+        while True:
+            add = input('請輸入描述內容(一行),完成輸入ok')
+            if add == "ok":
+                print('內容為:\n'+addstr)
+                if input("是否提交修改(輸入任意字符代表確定)"):
+                    break
+                else:
+                    return 0
+            else:
+                addstr =+ add + '\n'
+        update_broadcast(liveing['videoId'], liveing['title'], str(liveing['description']+addstr))
+    else:
+        print("當前沒有進行中的直播")
+
+
 if __name__ == "__main__":
+    logging.basicConfig(filename='app.log', level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.INFO)
+    # logger.debug('調試日誌')
+    # logger.info('信息日誌')
+    # logger.warning('警告日誌')
+    # logger.error('錯誤日誌')
+    # logger.critical('嚴重錯誤日誌')
+
+    with open('url.json', 'r') as f:
+        url = json.load(f)
+
     youtube = get_authenticated_service()
     channel_id = get_channel_id()
-    live_link = get_live_stream(channel_id)
-    if live_link:
-        video_id = live_link.split('=')[-1]
+    liveing = get_live_stream(channel_id)
+    if liveing:
+        video_id = liveing['videoId']
         description = get_live_description(video_id)
-        live_time = get_live_stream_duration(video_id)
-    print(live_link)
-    if live_link:
-        print(description)
-        print(live_time)
+        live_time = convert_timezone(get_live_stream_start_time(video_id))
+    if liveing:
+        print("URL:" + liveing)
+        print("描述:" + description)
+        print("開始時間:" + live_time)
+        print("已直播:" + get_live_stream_time(live_time))
+    else:
+        print("當前沒有進行中的直播")
+    commandlist = [command1, command2]
+    menu_str = '1:獲取當前直播並按日期順序修改名稱(PVE),2:新增描述內容(EFT)'
+    for i in menu_str.split(","):
+        print(i)
+    while True:
+        command = int(input("輸入數字:"))
+        if 0 < command < len(commandlist):
+            commandlist[command-1]()
+        elif command == len(commandlist)+1:
+            for i in menu_str.split(","):
+                print(i)
+        else:
+            print('沒有定義的操作')
 
+
+
+
+
+    # with open('temp.json', 'r',encoding="utf-8") as f:
+    #     temp = json.load(f)
+    # itemlist = []
+    # titlelist = []
+    # for video in temp:
+    #     snippet = video['snippet']
+    #     out = {'title': snippet['title'],
+    #         'videoId': video["id"]['videoId'],
+    #         'description': snippet['description'],
+    #         'liveBroadcastContent': snippet['liveBroadcastContent'],
+    #         'publishTime': snippet["publishTime"],
+    #         }
+    #     itemlist.append(out)
+    # for video in itemlist:
+    #     titlelist.append(video['title'])
+    # titlelist = sort_videos(titlelist)
+    # for s in titlelist:
+    #     print(s)
