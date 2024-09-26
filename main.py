@@ -12,6 +12,8 @@ import pytz
 SCOPES = ['https://www.googleapis.com/auth/youtube.force-ssl']
 
 
+EFT_game_title = "Escape from Tarkov"
+# 類別 ID(Category ID): https://mixedanalytics.com/blog/list-of-youtube-video-category-ids/
 # eventType 直播事件類型:completed：已完成的直播事件。live：正在進行的直播事件。upcoming：即將開始的直播事件。
 # order 指定搜索結果的排序:
     # date：按發布日期排序，最新的影片排在最前面。
@@ -21,8 +23,18 @@ SCOPES = ['https://www.googleapis.com/auth/youtube.force-ssl']
     # videoCount：按頻道中的影片數量排序，影片數量最多的頻道排在最前面。
     # viewCount：按觀看次數排序，觀看次數最多的影片排在最前面
 
+# status:
+# privacyStatus:public-所有人都可以看到直播。,private-只有您和您選擇的人可以看到直播。,unlisted-直播未公開列出，但任何知道連結的人都可以訪問。
+# selfDeclaredMadeForKids: 表示直播是為兒童製作的
+# embeddable:T/F允許將直播嵌入到其他網站
+# license:youtube-標準YouTube許可證,creativeCommon-知識共享授權
+# publishAt:指示何時應發布直播串流的時間戳記。
+
 # 如果修改範圍，刪除 token.json 文件
 def get_authenticated_service():
+    if not os.exists('client_secret.json'):
+        print('client_secret.json not found')
+        os.quit(1)
     creds = None
     # 檢查 token.json 文件是否存在
     if os.path.exists('token.json'):
@@ -197,19 +209,27 @@ def create_broadcast(title, description, start_time, end_time):
     updated_broadcast = update_broadcast(
         broadcast_id, new_title, new_description)
     print("Broadcast updated:", updated_broadcast)
-def update_broadcast(broadcast_id, new_title, new_description):
-    request = youtube.liveBroadcasts().update(
-        part='snippet',
-        body={
+def update_broadcast(broadcast_id, title, description,CategoryId='',GameTitle=''):
+    requestbody = {
             'id': broadcast_id,
             'snippet': {
-                'title': new_title,
-                'description': new_description
+                'title': title,
+                'description': description
+            },
+            "status": {
+                "selfDeclaredMadeForKids": False
             }
         }
+    if CategoryId:
+        requestbody['snippet']['categoryId'] = CategoryId
+    if GameTitle:
+        requestbody['snippet']['gameTitle'] = GameTitle
+    request = youtube.liveBroadcasts().update(
+        part='snippet',
+        body=requestbody
     )
     response = request.execute()
-    logger.info('request Broadcast '+ broadcast_id + ' chage of '+new_title+ ' '+new_description)
+    logger.info('request Broadcast '+ broadcast_id + ' chage of '+title+ ' '+description)
     return response
 
 # 刪除直播活動
@@ -367,7 +387,7 @@ def command1():
         if liveing['title'][10:] == renamedatestr:
             print('名稱正確,無需修改')
             return 0
-        updated_broadcast = update_broadcast(liveing['videoId'], '《逃离塔科夫PVE》'+renamedatestr, liveing['description'])
+        updated_broadcast = update_broadcast(liveing['videoId'], '《逃离塔科夫PVE》'+renamedatestr, liveing['description'],20,EFT_game_title)
         print("Broadcast updated:", updated_broadcast)
     else:
         print("當前沒有進行中的直播")

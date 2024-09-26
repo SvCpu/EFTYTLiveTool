@@ -7,3 +7,4 @@ dist/
 YTLivetool.spec
 temp.json
 app.log
+.venv/
