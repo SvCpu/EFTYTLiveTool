@@ -8,3 +8,4 @@ YTLivetool.spec
 temp.json
 app.log
 YTLivetool.exe
+.venv/
