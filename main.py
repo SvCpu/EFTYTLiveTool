@@ -1,4 +1,4 @@
-# pip install google-auth-oauthlib google-auth-httplib2 google-api-python-client pytz
+# pip install google-auth-oauthlib google-auth-httplib2 google-api-python-client pytz pyinstaller
 import logging
 import json
 import os
@@ -12,7 +12,7 @@ import pytz
 SCOPES = ['https://www.googleapis.com/auth/youtube.force-ssl']
 
 
-EFT_game_title = "Escape from Tarkov"
+EFT_game_title = "逃離塔科夫"
 # 類別 ID(Category ID): https://mixedanalytics.com/blog/list-of-youtube-video-category-ids/
 # eventType 直播事件類型:completed：已完成的直播事件。live：正在進行的直播事件。upcoming：即將開始的直播事件。
 # order 指定搜索結果的排序:
@@ -30,9 +30,12 @@ EFT_game_title = "Escape from Tarkov"
 # license:youtube-標準YouTube許可證,creativeCommon-知識共享授權
 # publishAt:指示何時應發布直播串流的時間戳記。
 
+# contentDetails
+# latencyPreference(延遲類型):"normal"：正常延遲,"low"：低延遲,"ultraLow"：超低延遲
+
 # 如果修改範圍，刪除 token.json 文件
 def get_authenticated_service():
-    if not os.exists('client_secret.json'):
+    if not os.path.exists('client_secret.json'):
         print('client_secret.json not found')
         os.quit(1)
     creds = None
@@ -107,7 +110,6 @@ def get_top_live_videos():
             'liveBroadcastContent': snippet['liveBroadcastContent'],
             'publishTime': snippet["publishTime"],
             }
-        print(out)
         outlist.append(out)
     return outlist
 
@@ -127,6 +129,15 @@ def get_live_description(video_id):
         return description
     else:
         return None
+
+# 獲取指定影片的詳細信息
+def get_video_details(video_id):
+    request = youtube.videos().list(
+        part="snippet",
+        id=video_id
+    )
+    response = request.execute()
+    return response.get('items', [])
 
 # 獲取直播開始的時間
 def get_live_stream_start_time(video_id):
@@ -184,23 +195,66 @@ def update_live_description(video_id, new_description):
 # end_time = "2024-09-22T16:00:00Z"
 # broadcast = create_broadcast(title, description, start_time, end_time)
 # print("Broadcast created:", broadcast)
-def create_broadcast(title, description, start_time, end_time):
-    request = youtube.liveBroadcasts().insert(
-        part='snippet,status',
-        body={
+def create_broadcast(title, description, start_time, end_time=''):
+    requestbody = {
             'snippet': {
                 'title': title,
                 'description': description,
-                'scheduledStartTime': start_time,
-                'scheduledEndTime': end_time
+                'scheduledStartTime': start_time
             },
             'status': {
-                'privacyStatus': 'public'
+                'privacyStatus': 'public',
+                "selfDeclaredMadeForKids": False
+            },
+            'contentDetails': {
+                'latencyPreference': 'normal'  # 設置延遲類型
+            }
+        }
+    if end_time:
+        requestbody["snippet"]['scheduledEndTime'] = end_time
+    request = youtube.liveBroadcasts().insert(
+        part='snippet,status',
+        body=requestbody
+    )
+    try:
+        broadcast_response = request.execute()
+    except Exception as e:
+        logger.error('Broadcast '+title+' create request error,error info is '+str(e))
+    else:
+        logger.info('Broadcast '+title+' create request Sent,start time is '+start_time)
+    # 創建直播流，設置為4K
+    stream_request = youtube.liveStreams().insert(
+        part='snippet,cdn',
+        body={
+            'snippet': {
+                'title': title
+            },
+            'cdn': {
+                'format': '4K',
+                'ingestionType': 'rtmp'
             }
         }
     )
-    response = request.execute()
-    return response
+    try:
+        stream_response = stream_request.execute()
+    except Exception as e:
+        logger.error('Stream '+title+' create request error,error info is '+str(e))
+    else:
+        logger.info('Stream create request Sent,title is '+title)
+
+    # 將直播流綁定到直播活動
+    bind_request = youtube.liveBroadcasts().bind(
+        part='id,contentDetails',
+        id=broadcast_response['id'],
+        streamId=stream_response['id']
+    )
+    try:
+        bind_response = bind_request.execute()
+    except Exception as e:
+        logger.error('Live Streaming '+stream_response['id']+' Bind to Live Event '+broadcast_response['id']+' Request Sent,error info is '+str(e))
+    else:
+        logger.info('Live Streaming '+stream_response['id']+' Bind to Live Event '+broadcast_response['id']+' Request Sent')
+    return (broadcast_response, stream_response, bind_response)
 
 # 更新直播活動
     broadcast_id = ""
@@ -216,9 +270,9 @@ def update_broadcast(broadcast_id, title, description,CategoryId='',GameTitle=''
                 'title': title,
                 'description': description
             },
-            "status": {
-                "selfDeclaredMadeForKids": False
-            }
+            # "status": {
+            #     "selfDeclaredMadeForKids": False
+            # }
         }
     if CategoryId:
         requestbody['snippet']['categoryId'] = CategoryId
@@ -244,7 +298,7 @@ def delete_broadcast(broadcast_id):
     except Exception as e:
         logger.error('Broadcast '+ broadcast_id + ' del request error with:'+str(e))
     else:
-        logger.info('Broadcast '+ broadcast_id + ' del request sended')
+        logger.info('Broadcast '+ broadcast_id + ' del request Sent')
 
 # 獲取直播聊天信息
 # live_chat_id = "YOUR_LIVE_CHAT_ID"
@@ -361,36 +415,45 @@ def parse_date_string(date_string):
     # 分割日期和序號
     date_part, serial_part = date_string.split('-')
     out = {
-        "year": int(date_part[:4]),
-        "month": int(date_part[4:6]),
-        "day": int(date_part[6:8]),
+        "year": date_part[:4],
+        "month": date_part[4:6],
+        "day": date_part[6:8],
         "serial": int(serial_part)
     }
     return out
 
+def get_last_eft_title():
+    renamedatestr = ''
+    top_live = get_top_live_videos()
+    titlelist = []
+    for video in top_live:
+        titlelist.append(video['title'])
+    titlelist = sort_videos(titlelist)
+    now = datetime.now()
+    lastlive = parse_date_string(titlelist[0][10:])
+    nowtimestr = str(now.year)+now.strftime("%m")+now.strftime("%d")
+    if (lastlive["year"]+lastlive['month']+lastlive['day']) == nowtimestr:
+        renamedatestr = nowtimestr+'-'+str(lastlive["serial"]+1)
+    else:
+        renamedatestr = nowtimestr+"-1"
+    return '《逃离塔科夫PVE》'+renamedatestr
 
 def command1():
     if liveing:
-        renamedatestr = ''
-        top_live = get_top_live_videos()
-        titlelist = []
-        for video in top_live:
-            titlelist.append(video['title'])
-        titlelist = sort_videos(titlelist)
-        now = datetime.now()
-        lastlive = parse_date_string(titlelist[0][10:])
-        nowtimestr = str(now.year+now.strftime("%m")+now.strftime("%d"))
-        if (lastlive["year"]+lastlive['month']+lastlive['day']) == nowtimestr:
-            renamedatestr = nowtimestr+'-'+str(lastlive["serial"]+1)
-        else:
-            renamedatestr = nowtimestr+"-1"
-        if liveing['title'][10:] == renamedatestr:
+        renamedatestr = get_last_eft_title()
+        if liveing['title'] == renamedatestr:
             print('名稱正確,無需修改')
             return 0
         updated_broadcast = update_broadcast(liveing['videoId'], '《逃离塔科夫PVE》'+renamedatestr, liveing['description'],20,EFT_game_title)
         print("Broadcast updated:", updated_broadcast)
     else:
         print("當前沒有進行中的直播")
+
+def command3():
+    renamedatestr = get_last_eft_title()
+    start_time = (datetime.utcnow() + timedelta(minutes=10)).isoformat("T") + "Z"  # 設置為當前時間的10分鐘後
+    updated_broadcast = create_broadcast('《逃离塔科夫PVE》'+renamedatestr, liveing['description'],start_time)
+    print("Broadcast updated:", updated_broadcast)
 
 def command2():
     if liveing:
@@ -422,8 +485,8 @@ if __name__ == "__main__":
     # logger.error('錯誤日誌')
     # logger.critical('嚴重錯誤日誌')
 
-    with open('url.json', 'r') as f:
-        url = json.load(f)
+    # with open('url.json', 'r') as f:
+    #     url = json.load(f)
 
     youtube = get_authenticated_service()
     channel_id = get_channel_id()
@@ -439,8 +502,8 @@ if __name__ == "__main__":
         print("已直播:" + get_live_stream_time(live_time))
     else:
         print("當前沒有進行中的直播")
-    commandlist = [command1, command2]
-    menu_str = '1:獲取當前直播並按日期順序修改名稱(PVE),2:新增描述內容(EFT)'
+    commandlist = [command3,command1, command2]
+    menu_str = '1:創建直播活動(EFT-PVE),2:獲取當前直播並按日期順序修改名稱(PVE),3:新增描述內容(EFT)'
     for i in menu_str.split(","):
         print(i)
     while True:
@@ -456,7 +519,7 @@ if __name__ == "__main__":
 
 
 
-
+    # print(get_last_eft_title())
     # with open('temp.json', 'r',encoding="utf-8") as f:
     #     temp = json.load(f)
     # itemlist = []
