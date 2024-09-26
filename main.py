@@ -1,4 +1,4 @@
-# pip install google-auth-oauthlib google-auth-httplib2 pytz
+# pip install google-auth-oauthlib google-auth-httplib2 google-api-python-client pytz
 import logging
 import json
 import os
