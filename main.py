@@ -75,6 +75,11 @@ def get_channel_id():
     else:
         return None
 
+# 通過正則表達式來檢查字串符是否爲 YouTube PlayList ID
+def is_playlist_id(string):
+    pattern = re.compile(r'^[a-zA-Z0-9_-]{34}$')
+    return bool(pattern.match(string))
+
 # 獲取正在直播的鏈接
 def get_live_stream(channel_id):
     request = youtube.search().list(
@@ -195,7 +200,26 @@ def update_live_description(video_id, new_description):
     response = request.execute()
     return response
 
-
+# 將指定影片加入到播放清單中
+def add_to_playlist(id,playlistid):
+    playlistsaddrequest = youtube.playlistItems().insert(
+        part="snippet",
+        body={
+            "snippet": {
+                "playlistId": playlistid,
+                "resourceId": {
+                    "kind": "youtube#video",
+                    "videoId": id
+                }
+            }
+        }
+    )
+    try:
+        playlistsaddrequest.execute()
+    except Exception as e:
+        logger.error('An error occurred while sending the request to add video '+id+' to playlist '+playlistid+',error info is:'+str(e))
+    else:
+        logger.info('Request to add video '+id+' to playlist '+playlistid+' has been sent')
 
 # 創建直播
 # title = "New Live Broadcast"
@@ -203,7 +227,7 @@ def update_live_description(video_id, new_description):
 # start_time = "2024-09-22T15:00:00Z"
 # end_time = "2024-09-22T16:00:00Z"
 # create_broadcast(title, description, start_time, end_time)
-def create_broadcast(title, description, start_time, end_time=''):
+def create_broadcast(title, description, start_time, end_time='',playlists=[]):
     requestbody = {
             'snippet': {
                 'title': title,
@@ -214,12 +238,17 @@ def create_broadcast(title, description, start_time, end_time=''):
             'status': {
                 'privacyStatus': 'public',
                 "selfDeclaredMadeForKids": False
+            },
+            'contentDetails':{
+                'monitorStream':{
+                    'enableMonitorStream':False
+                }
             }
         }
     if end_time:
         requestbody["snippet"]['scheduledEndTime'] = end_time
     request = youtube.liveBroadcasts().insert(
-        part='snippet,status',
+        part='snippet,status,contentDetails',
         body=requestbody
     )
     try:
@@ -228,14 +257,19 @@ def create_broadcast(title, description, start_time, end_time=''):
         logger.error('Broadcast '+title+' create request error,error info is '+str(e))
         print('發送請求時出錯, 請查詢日誌')
     else:
+        broadcast_id = broadcast_response["id"]
         logger.info('Broadcast '+title+' create request Sent,start time is '+start_time)
-    if broadcast_response['id']:
-        logger.info("The live broadcast with activity ID "+broadcast_response['id']+" has been created")
-        print('ID為'+broadcast_response['id']+'的直播已建立')
+    if broadcast_id:
+        logger.info("The live broadcast with activity ID "+broadcast_id+" has been created")
+        print('ID為'+broadcast_id+'的直播已建立')
         print('直播聊天室ID:'+broadcast_response['snippet']['liveChatId'])
         input('為避免浪費API查詢額度, 請確定直播已傳送到YouTube後按下任意鍵繼續')
         print('查詢活動狀態的直播流並綁定到直播活動')
         streamId = ''
+        if playlists:
+            for playlist in playlists:
+                if is_playlist_id(playlist):
+                    add_to_playlist(broadcast_id,playlist)
         for _ in range(3):
             # 獲取直播流信息
             streams_request = youtube.liveStreams().list (
@@ -259,23 +293,24 @@ def create_broadcast(title, description, start_time, end_time=''):
             # 將直播流綁定到直播活動
             bind_request = youtube.liveBroadcasts().bind(
                 part='id,contentDetails',
-                id=broadcast_response['id'],
+                id=broadcast_id,
                 streamId=streamId
             )
             try:
                 bind_response = bind_request.execute()
             except Exception as e:
-                logger.error('Live Streaming '+streamId+' Bind to Live Event '+broadcast_response['id']+' Request Sent,error info is '+str(e))
+                logger.error('Live Streaming '+streamId+' Bind to Live Event '+broadcast_id+' Request Sent,error info is '+str(e))
             else:
-                logger.info('Live Streaming '+streamId+' Bind to Live Event '+broadcast_response['id']+' Request Sent')
-                print('直播流'+streamId+'已與直播活動'+broadcast_response['id']+'繫結')
+                logger.info('Live Streaming '+streamId+' Bind to Live Event '+broadcast_id+' Request Sent')
+                print('直播流'+streamId+'已與直播活動'+broadcast_id+'繫結')
                 startlive_request=youtube.liveBroadcasts().transition(
+                    part = "snippet,status",
                     broadcastStatus="live",
-                    id=broadcast_response['id']
+                    id=broadcast_id
                 )
-                logger.info('Live broadcast '+broadcast_response['id']+' Start Request Sent')
+                logger.info('Live broadcast '+broadcast_id+' Start Request Sent')
                 startlive_request.execute()
-                print('直播'+broadcast_response['id']+'已設置爲活動狀態')
+                print('直播'+broadcast_id+'已設置爲活動狀態')
         else:
             print('沒有活動狀態的直播流')
             bind_response = None
@@ -484,7 +519,8 @@ def command1():
 def command3():
     renamedatestr = get_last_eft_title()
     start_time = (datetime.utcnow() + timedelta(minutes=3)).isoformat("T") + "Z"  # 設置為當前時間的3分鐘後
-    create_broadcast(renamedatestr, "",start_time)
+    pve_playlist = url['playlistID']['EFT-PVE']
+    create_broadcast(renamedatestr, "#escapefromtarkov #EFT",start_time,playlists=[pve_playlist])
 
 def command2():
     if liveing:
@@ -516,8 +552,8 @@ if __name__ == "__main__":
     # logger.error('錯誤日誌')
     # logger.critical('嚴重錯誤日誌')
 
-    # with open('url.json', 'r') as f:
-    #     url = json.load(f)
+    with open('url.json', 'r') as f:
+        url = json.load(f)
 
     youtube = get_authenticated_service()
     channel_id = get_channel_id()
@@ -538,7 +574,7 @@ if __name__ == "__main__":
     for i in menu_str.split(","):
         print(i)
     while True:
-        command = int(input("輸入數字:"))
+        command = int(input("輸入操作數字:"))
         if 0 < command < len(commandlist):
             commandlist[command-1]()
         elif command == len(commandlist)+1:
