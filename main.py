@@ -9,36 +9,18 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from datetime import datetime, timedelta, timezone
-import requests
 import pytz
 SCOPES = ['https://www.googleapis.com/auth/youtube.force-ssl']
 
 # yt api
 # LiveStreams:https://developers.google.com/youtube/v3/live/docs/liveStreams?hl=zh-tw
 # LiveBroadcasts:https://developers.google.com/youtube/v3/live/docs/liveBroadcasts?hl=zh-tw
+# Videos:https://developers.google.com/youtube/v3/docs/videos?hl=zh-tw
 
-EFT_game_title = "逃離塔科夫"
-# 遊戲名稱設置那裡還沒有方法可以添加
+EFT_game_title = "escapefromtarkov"
 # 類別 ID(Category ID): https://mixedanalytics.com/blog/list-of-youtube-video-category-ids/
+# 或用 api.http:line 1 取得類別 id
 
-# eventType 直播事件類型:completed：已完成的直播事件。live：正在進行的直播事件。upcoming：即將開始的直播事件。
-# order 指定搜索結果的排序:
-    # date：按發布日期排序，最新的影片排在最前面。
-    # rating：按評分排序，評分最高的影片排在最前面。
-    # relevance：按相關性排序，與搜索查詢最相關的影片排在最前面。
-    # title：按標題的字母順序排序。
-    # videoCount：按頻道中的影片數量排序，影片數量最多的頻道排在最前面。
-    # viewCount：按觀看次數排序，觀看次數最多的影片排在最前面
-
-# status:
-# privacyStatus:public-所有人都可以看到直播。,private-只有您和您選擇的人可以看到直播。,unlisted-直播未公開列出，但任何知道連結的人都可以訪問。
-# selfDeclaredMadeForKids: 表示直播是為兒童製作的
-# embeddable:T/F允許將直播嵌入到其他網站
-# license:youtube-標準YouTube許可證,creativeCommon-知識共享授權
-# publishAt:指示何時應發布直播串流的時間戳記。
-
-# contentDetails
-# latencyPreference(延遲類型):"normal"：正常延遲,"low"：低延遲,"ultraLow"：超低延遲
 
 # 如果修改範圍，刪除 token.json 文件
 def get_authenticated_service():
@@ -64,6 +46,7 @@ def get_authenticated_service():
     return build('youtube', 'v3', credentials=creds)
 
 # 獲取頻道 ID
+# Api usage 1 time
 def get_channel_id():
     request = youtube.channels().list(
         part='id',
@@ -81,6 +64,7 @@ def is_playlist_id(string):
     return bool(pattern.match(string))
 
 # 獲取正在直播的鏈接
+# Api usage 1 time
 def get_live_stream(channel_id):
     request = youtube.search().list(
         part='snippet',
@@ -101,7 +85,9 @@ def get_live_stream(channel_id):
         return out
     else:
         return None
-# 获取频道直播影片列表前10部的直播影片(非排名)
+
+# 獲取頻道直播影片列表前10部的直播影片(非排名)
+# Api usage 1 time
 def get_top_live_videos():
     request = youtube.search().list(
         part='snippet',
@@ -129,6 +115,7 @@ def id_to_link(id):
     return f"https://www.youtube.com/watch?v={id}"
 
 # 獲取直播描述
+# Api usage 1 time
 def get_live_description(video_id):
     request = youtube.videos().list(
         part='snippet',
@@ -143,6 +130,7 @@ def get_live_description(video_id):
         return None
 
 # 獲取指定影片的詳細信息
+# Api usage 1 time
 def get_video_details(video_id):
     request = youtube.videos().list(
         part="snippet",
@@ -152,6 +140,7 @@ def get_video_details(video_id):
     return response.get('items', [])
 
 # 獲取直播開始的時間
+# Api usage 1 time
 def get_live_stream_start_time(video_id):
     request = youtube.videos().list(
         part='liveStreamingDetails',
@@ -187,6 +176,7 @@ def convert_timezone(utc_time_str):
 
 
 # 修改直播描述
+# Api usage 1 time
 def update_live_description(video_id, new_description):
     request = youtube.videos().update(
         part='snippet',
@@ -201,6 +191,7 @@ def update_live_description(video_id, new_description):
     return response
 
 # 將指定影片加入到播放清單中
+# Api usage 1 time
 def add_to_playlist(id,playlistid):
     playlistsaddrequest = youtube.playlistItems().insert(
         part="snippet",
@@ -222,18 +213,18 @@ def add_to_playlist(id,playlistid):
         logger.info('Request to add video '+id+' to playlist '+playlistid+' has been sent')
 
 # 創建直播
+# Api usage 3~4 time
 # title = "New Live Broadcast"
 # description = "This is a test broadcast."
 # start_time = "2024-09-22T15:00:00Z"
 # end_time = "2024-09-22T16:00:00Z"
-# create_broadcast(title, description, start_time, end_time)
-def create_broadcast(title, description, start_time, end_time='',playlists=[]):
+# create_broadcast(title, description, start_time, end_time,playlists=['playlistid1','playlistid2'],categoryId='20',gameTitle='EFT')
+def create_broadcast(title, description, start_time, end_time='',playlists=[],categoryId='',gameTitle=''):
     requestbody = {
             'snippet': {
                 'title': title,
                 'description': description,
-                'scheduledStartTime': start_time,
-                'categoryId' : 20
+                'scheduledStartTime': start_time
             },
             'status': {
                 'privacyStatus': 'public',
@@ -260,6 +251,25 @@ def create_broadcast(title, description, start_time, end_time='',playlists=[]):
         broadcast_id = broadcast_response["id"]
         logger.info('Broadcast '+title+' create request Sent,start time is '+start_time)
     if broadcast_id:
+        if categoryId and categoryId.isdigit():
+            gameTitlelog = ''
+            categoryIdrequestbody = {
+                'id': broadcast_id,
+                'snippet': {
+                    'title':title,
+                    'defaultAudioLanguage':'zh-Hant',
+                    'categoryId' : str(categoryId)
+                }
+            }
+            if gameTitle:
+                categoryIdrequestbody['snippet']['gameTitle'] = gameTitle
+                gameTitlelog = ' and game title is '+gameTitle
+            categoryIdrequest = youtube.videos().update(
+            part='snippet',
+            body=categoryIdrequestbody
+                )
+            categoryIdrequest.execute()
+            logger.info('request Broadcast '+ broadcast_id + 'CategoryId chage of '+categoryId+ gameTitlelog)
         logger.info("The live broadcast with activity ID "+broadcast_id+" has been created")
         print('ID為'+broadcast_id+'的直播已建立')
         print('直播聊天室ID:'+broadcast_response['snippet']['liveChatId'])
@@ -317,29 +327,26 @@ def create_broadcast(title, description, start_time, end_time='',playlists=[]):
     return (broadcast_response, bind_response)
 
 # 更新直播活動
-    broadcast_id = ""
-    new_title = "Updated Live Broadcast Title"
-    new_description = "This is an updated description."
-    updated_broadcast = update_broadcast(
-        broadcast_id, new_title, new_description)
-    print("Broadcast updated:", updated_broadcast)
-def update_broadcast(broadcast_id, title, description,CategoryId='',GameTitle=''):
+# Api usage 1 time
+def update_broadcast(broadcast_id, title, description,CategoryId='',GameTitle='',selfDeclaredMadeForKids=None):
     requestbody = {
             'id': broadcast_id,
             'snippet': {
                 'title': title,
                 'description': description
-            },
-            # "status": {
-            #     "selfDeclaredMadeForKids": False
-            # }
+            }
         }
     if CategoryId:
         requestbody['snippet']['categoryId'] = CategoryId
     if GameTitle:
         requestbody['snippet']['gameTitle'] = GameTitle
+    if selfDeclaredMadeForKids != None:
+        requestbody['status']['selfDeclaredMadeForKids'] = selfDeclaredMadeForKids
+        requestpart = 'snippet,status'
+    else:
+        requestpart = 'snippet'
     request = youtube.liveBroadcasts().update(
-        part='snippet',
+        part=requestpart,
         body=requestbody
     )
     response = request.execute()
@@ -347,8 +354,8 @@ def update_broadcast(broadcast_id, title, description,CategoryId='',GameTitle=''
     return response
 
 # 刪除直播活動
+# Api usage 1 time
 # delete_response = delete_broadcast(broadcast_id)
-# print("Broadcast deleted:", delete_response)
 def delete_broadcast(broadcast_id):
     request = youtube.liveBroadcasts().delete(
         id=broadcast_id
@@ -361,12 +368,11 @@ def delete_broadcast(broadcast_id):
         logger.info('Broadcast '+ broadcast_id + ' del request Sent')
 
 # 獲取直播聊天信息
+# Api usage 1 time
 # live_chat_id = "YOUR_LIVE_CHAT_ID"
 # chat_messages = get_live_chat_messages(live_chat_id)
 # for message in chat_messages['items']:
 #     print(f"{message['authorDetails']['displayName']}: {message['snippet']['displayMessage']}")
-
-
 def get_live_chat_messages(live_chat_id):
     request = youtube.liveChatMessages().list(
         liveChatId=live_chat_id,
@@ -376,6 +382,7 @@ def get_live_chat_messages(live_chat_id):
     return response
 
 # 獲取live_chat_id
+# Api usage 1 time
 def get_live_chat_id(video_id):
     request = youtube.videos().list(
         part='liveStreamingDetails',
@@ -391,17 +398,7 @@ def get_live_chat_id(video_id):
         return None
 
 # 獲取直播的詳細信息
-# live_details.get('actualStartTime')
-# actualStartTime：這是直播實際開始的時間。
-# actualEndTime：這是直播實際結束的時間（如果直播已經結束）。
-# scheduledStartTime：這是直播計劃開始的時間。
-# scheduledEndTime：這是直播計劃結束的時間。
-# concurrentViewers：這是當前同時觀看直播的觀眾數量。
-# activeLiveChatId：這是直播聊天的唯一標識符，用於獲取直播聊天信息。
-# boundStreamId：這是與直播綁定的流 ID。
-# monitorStream：這包含監控流的相關信息，例如監控流的 URL。
-# recordingStatus：這表示直播的錄製狀態，例如是否正在錄製。
-# broadcastStatus：這表示直播的狀態，例如 live、completed 或 testing。
+# Api usage 1 time
 def get_live_stream_details(video_id):
     request = youtube.videos().list(
         part='liveStreamingDetails',
@@ -428,19 +425,8 @@ def is_video_live(video_id):
     else:
         return False
 
-# def get_latest_video_id(playlist_id):
-#     request = youtube.playlistItems().list(
-#         part='snippet',
-#         playlistId=playlist_id,
-#         maxResults=1
-#     )
-#     response = request.execute()
-#     if 'items' in response and len(response['items']) > 0:
-#         return response['items'][0]['snippet']['resourceId']['videoId']
-#     else:
-#         return None
-
 # 獲取指定播放列表中最後新增的視頻
+# Api usage 1 time
 def get_latest_video_title(playlist_id):
     request = youtube.playlistItems().list(
         part='snippet',
@@ -520,7 +506,7 @@ def command3():
     renamedatestr = get_last_eft_title()
     start_time = (datetime.utcnow() + timedelta(minutes=3)).isoformat("T") + "Z"  # 設置為當前時間的3分鐘後
     pve_playlist = url['playlistID']['EFT-PVE']
-    create_broadcast(renamedatestr, "#escapefromtarkov #EFT",start_time,playlists=[pve_playlist])
+    create_broadcast(renamedatestr, "#escapefromtarkov #EFT",start_time,playlists=[pve_playlist],categoryId=20,gameTitle=EFT_game_title)
 
 def command2():
     if liveing:
@@ -543,6 +529,7 @@ def command2():
 
 
 if __name__ == "__main__":
+    # Api usage 2+ time
     logging.basicConfig(filename='app.log', level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     logger = logging.getLogger(__name__)
     logger.setLevel(logging.INFO)
@@ -582,26 +569,3 @@ if __name__ == "__main__":
                 print(i)
         else:
             print('沒有定義的操作')
-
-
-
-
-    # print(get_last_eft_title())
-    # with open('temp.json', 'r',encoding="utf-8") as f:
-    #     temp = json.load(f)
-    # itemlist = []
-    # titlelist = []
-    # for video in temp:
-    #     snippet = video['snippet']
-    #     out = {'title': snippet['title'],
-    #         'videoId': video["id"]['videoId'],
-    #         'description': snippet['description'],
-    #         'liveBroadcastContent': snippet['liveBroadcastContent'],
-    #         'publishTime': snippet["publishTime"],
-    #         }
-    #     itemlist.append(out)
-    # for video in itemlist:
-    #     titlelist.append(video['title'])
-    # titlelist = sort_videos(titlelist)
-    # for s in titlelist:
-    #     print(s)
