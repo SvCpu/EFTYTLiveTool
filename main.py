@@ -44,7 +44,7 @@ EFT_game_title = "逃離塔科夫"
 def get_authenticated_service():
     if not os.path.exists('client_secret.json'):
         print('client_secret.json not found')
-        os.quit(1)
+        exit()
     creds = None
     # 檢查 token.json 文件是否存在
     if os.path.exists('token.json'):
