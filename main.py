@@ -233,7 +233,8 @@ def create_broadcast(title, description, start_time, end_time='',playlists=[],ca
             'contentDetails':{
                 'monitorStream':{
                     'enableMonitorStream':False
-                }
+                },
+                'enableAutoStop':True
             }
         }
     if end_time:
@@ -251,25 +252,6 @@ def create_broadcast(title, description, start_time, end_time='',playlists=[],ca
         broadcast_id = broadcast_response["id"]
         logger.info('Broadcast '+title+' create request Sent,start time is '+start_time)
     if broadcast_id:
-        if categoryId and categoryId.isdigit():
-            gameTitlelog = ''
-            categoryIdrequestbody = {
-                'id': broadcast_id,
-                'snippet': {
-                    'title':title,
-                    'defaultAudioLanguage':'zh-Hant',
-                    'categoryId' : str(categoryId)
-                }
-            }
-            if gameTitle:
-                categoryIdrequestbody['snippet']['gameTitle'] = gameTitle
-                gameTitlelog = ' and game title is '+gameTitle
-            categoryIdrequest = youtube.videos().update(
-            part='snippet',
-            body=categoryIdrequestbody
-                )
-            categoryIdrequest.execute()
-            logger.info('request Broadcast '+ broadcast_id + 'CategoryId chage of '+categoryId+ gameTitlelog)
         logger.info("The live broadcast with activity ID "+broadcast_id+" has been created")
         print('ID為'+broadcast_id+'的直播已建立')
         print('直播聊天室ID:'+broadcast_response['snippet']['liveChatId'])
@@ -321,6 +303,27 @@ def create_broadcast(title, description, start_time, end_time='',playlists=[],ca
                 logger.info('Live broadcast '+broadcast_id+' Start Request Sent')
                 startlive_request.execute()
                 print('直播'+broadcast_id+'已設置爲活動狀態')
+                if categoryId:
+                    gameTitlelog = ''
+                    categoryIdrequestbody = {
+                        'id': broadcast_id,
+                        'snippet': {
+                            'title':title,
+                            'description': description,
+                            'defaultAudioLanguage':'zh-Hant',
+                            'categoryId' : str(categoryId)
+                        }
+                    }
+                    if gameTitle:
+                        categoryIdrequestbody['snippet']['gameTitle'] = gameTitle
+                        gameTitlelog = ' and game title is '+gameTitle
+                    categoryIdrequest = youtube.videos().update(
+                    part='snippet',
+                    body=categoryIdrequestbody
+                        )
+                    print(categoryIdrequestbody)
+                    categoryIdrequest.execute()
+                    logger.info('request Broadcast '+ broadcast_id + 'CategoryId chage of '+str(categoryId)+ gameTitlelog)
         else:
             print('沒有活動狀態的直播流')
             bind_response = None
@@ -530,7 +533,7 @@ def command2():
 
 if __name__ == "__main__":
     # Api usage 2+ time
-    logging.basicConfig(filename='app.log', level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    logging.basicConfig(filename='app.log',encoding='utf-8', level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     logger = logging.getLogger(__name__)
     logger.setLevel(logging.INFO)
     # logger.debug('調試日誌')
@@ -550,7 +553,7 @@ if __name__ == "__main__":
         description = get_live_description(video_id)
         live_time = convert_timezone(get_live_stream_start_time(video_id))
     if liveing:
-        print("URL:" + liveing)
+        print("URL:" + id_to_link(video_id))
         print("描述:" + description)
         print("開始時間:" + live_time)
         print("已直播:" + get_live_stream_time(live_time))
