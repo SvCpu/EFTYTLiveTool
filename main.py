@@ -478,6 +478,31 @@ def parse_date_string(date_string):
     }
     return out
 
+# 解析描述字符串
+def parse_description(description):
+    out_obj = {'description':[],'tags':[],'timeline':[]}
+    splits = description.split('\n')
+    if splits:
+        for s in splits:
+            if s.count('#') >0:
+                tags = [word.strip('#') for word in s.split() if word.startswith('#')]
+                tags = [item for item in tags if item != '']
+                out_obj['tags'] += tags
+            elif has_time(s):
+                out_obj['timeline'] += [[time, text.strip()] for time, text in re.findall(r'(\d{1,2}:\d{2}:\d{2}|\d{2}:\d{2})\s*([^\d\n]+)', s)]
+            else:
+                out_obj['description'].append(s)
+        return out_obj
+    else:
+        return None
+
+def has_time(string):
+    """
+    檢查字符串是否包含HH:MM:SS或MM:SS格式中的時間
+    """
+    time_pattern = r'\b(\d{1,2}:\d{2}:\d{2}|\d{2}:\d{2})\b'
+    return bool(re.search(time_pattern, string))
+
 def get_last_eft_title():
     renamedatestr = ''
     top_live = get_top_live_videos()
