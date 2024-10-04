@@ -21,6 +21,10 @@ EFT_game_title = "escapefromtarkov"
 # 類別 ID(Category ID): https://mixedanalytics.com/blog/list-of-youtube-video-category-ids/
 # 或用 api.http:line 1 取得類別 id
 
+class description:
+    def __init__(self, title, description):
+        self.title = title
+        self.description = description
 
 # 如果修改範圍，刪除 token.json 文件
 def get_authenticated_service():
