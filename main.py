@@ -99,8 +99,8 @@ if __name__ == "__main__":
             if commands.inited:
                 commands.main()
             else:
-                commands.init()
-                commands.main(ytapi, logger, liveing, channel_id,data)
+                commands.init(ytapi, logger, liveing, channel_id,data)
+                commands.main()
         elif commandnum == len(commandlist)+1:
             for i in menu:
                 print(i)
