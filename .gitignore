@@ -9,3 +9,4 @@ temp.json
 app.log
 YTLivetool.exe
 .venv/
+__pycache__/
