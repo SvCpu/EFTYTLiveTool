@@ -16,6 +16,8 @@ from api import youtubeapi
 SCOPES = ['https://www.googleapis.com/auth/youtube.force-ssl']
 redirect_uri = 'http://localhost:8080/'
 
+load_json = ['url']
+
 # yt api documentation
 # LiveStreams:https://developers.google.com/youtube/v3/live/docs/liveStreams?hl=zh-tw
 # LiveBroadcasts:https://developers.google.com/youtube/v3/live/docs/liveBroadcasts?hl=zh-tw
@@ -66,8 +68,11 @@ if __name__ == "__main__":
     # logger.error('錯誤日誌')
     # logger.critical('嚴重錯誤日誌')
     data = {}
-    with open('url.json', 'r') as f:
-        data['url'] = json.load(f)
+    # 加載配置文件 -> data
+    for name in load_json:
+        if os.path.exists(name+'.json'):
+            with open(name+'.json', 'r') as f:
+                data[name] = json.load(f)
 
     youtube = get_authenticated_service()
     ytapi = youtubeapi(youtube, logger)
@@ -86,7 +91,7 @@ if __name__ == "__main__":
         print("當前沒有進行中的直播")
 
     commandlist = []
-    classes = get_classes(command)
+    classes = get_classes(command) #從command.py獲取命令
     for classname in classes:
         cls = getattr(command, classname)
         commandlist.append(cls())
