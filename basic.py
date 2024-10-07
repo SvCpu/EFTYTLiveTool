@@ -65,7 +65,7 @@ def has_time(string):
 def get_live_stream_time(start_time):
     now = datetime.now(timezone.utc)
     duration = now - start_time
-    return datetime.strptime(duration,"%H:%M:%SZ")
+    return datetime.strptime(str(duration), '%H:%M:%S.%f').strftime('%H:%M:%S')
 
 
 def convert_timezone(utc_time_str):

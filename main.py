@@ -24,6 +24,9 @@ redirect_uri = 'http://localhost:8080/'
 # 類別 ID(Category ID): https://mixedanalytics.com/blog/list-of-youtube-video-category-ids/
 # 或用 api.http:line 1 取得類別 id
 
+# Game Title
+# https://stackoverflow.com/questions/39907947/youtube-api-how-to-set-game-title
+
 # 如果修改範圍，刪除 token.json 文件
 def get_authenticated_service():
     if not os.path.exists('client_secret.json'):
@@ -74,7 +77,7 @@ if __name__ == "__main__":
         video_id = liveing['videoId']
         live_description = ytapi.get_live_description(video_id)
         live_time = convert_timezone(ytapi.get_live_stream_start_time(video_id))
-    if liveing:
+        data['live_time'] = live_time
         print("URL:" + id_to_link(video_id))
         print("描述:" + live_description)
         print("開始時間:" + str(live_time))

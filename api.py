@@ -265,7 +265,7 @@ class youtubeapi:
 
     # 更新直播活動
     # Api usage 1 time
-    def update_broadcast(self, broadcast_id, title, description,CategoryId='',GameTitle='',selfDeclaredMadeForKids=None):
+    def update_broadcast(self, broadcast_id, title, description,Scheduledstarttime,CategoryId='',GameTitle='',selfDeclaredMadeForKids=None):
         requestbody = {
                 'id': broadcast_id,
                 'snippet': {

@@ -59,21 +59,24 @@ class chage_liveing_description_with_eftlive(Command):
         self.author = 'SvCpu'
 
     def main(self):
-        if self.liveing:
-            addstr = '\n'
-            if input("是否加上時間戳(輸入任意字符代表確定)"):
-                addstr = + get_live_stream_time(self.live_time)
-            while True:
-                add = input('請輸入描述內容(一行),完成輸入ok')
-                if add == "ok":
-                    print('內容為:\n'+addstr)
-                    if input("是否提交修改(輸入任意字符代表確定)"):
-                        break
+        if self.inited:
+            if self.liveing:
+                addstr = '\n'
+                if input("是否加上時間戳(輸入任意字符代表確定)"):
+                    addstr += str(get_live_stream_time(self.data['live_time']))
+                while True:
+                    add = input('請輸入描述內容(一行),完成輸入ok')
+                    if add == "ok":
+                        print('內容為:\n'+addstr)
+                        if input("是否提交修改(輸入任意字符代表確定)"):
+                            break
+                        else:
+                            return 0
                     else:
-                        return 0
-                else:
-                    addstr = + add + '\n'
-            self.api.update_broadcast(self.liveing['videoId'], self.liveing['title'], str(
-                self.liveing['description']+addstr))
+                        addstr += add + '\n'
+                self.api.update_broadcast(self.liveing['videoId'], self.liveing['title'], str(
+                    self.liveing['description']+addstr))
+            else:
+                print("當前沒有進行中的直播")
         else:
-            print("當前沒有進行中的直播")
+            print('not init')
